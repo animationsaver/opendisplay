@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.17.0](https://github.com/nmt3325/openairdisplay/compare/v1.16.0...v1.17.0) (2026-08-09)
+
+
+### Features
+
+* show whether a WiFi session is AWDL or the local network ([b4796f6](https://github.com/nmt3325/openairdisplay/commit/b4796f69cdabe80e0457b497c75cc129ec001072))
+* support Apple peer-to-peer WiFi ([ba61e83](https://github.com/nmt3325/openairdisplay/commit/ba61e8376676daab61c53ab8513bf9afc6874d30))
+
+
+### Bug Fixes
+
+* stop the listener restart loop on peer-to-peer WiFi launch ([e3ee6ec](https://github.com/nmt3325/openairdisplay/commit/e3ee6ec5e78d4490ae19f53320a9b98ac9ccc1c8))
+
 ## [1.16.0](https://github.com/peetzweg/opendisplay/compare/v1.15.0...v1.16.0) (2026-08-08)
 
 
