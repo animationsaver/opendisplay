@@ -106,6 +106,17 @@ enum ConnectionTarget: Hashable {
             return "wifi:unknown"
         }
     }
+
+    /// True when Bonjour only ever saw this service over Apple's peer-to-peer
+    /// WiFi link, i.e. no shared network is carrying it. Being visible on both
+    /// paths still counts as a local network, because that is the one the dial
+    /// will end up preferring.
+    var isPeerToPeerOnly: Bool {
+        guard case .wifi(let result) = self else { return false }
+        let interfaces = result.interfaces
+        return !interfaces.isEmpty
+            && interfaces.allSatisfy { isPeerToPeerWiFiInterface($0.name) }
+    }
 }
 
 /// One connected (or connecting) device: its target, its sender pipeline,
@@ -142,7 +153,17 @@ final class DeviceSession: ObservableObject, Identifiable {
     // and its service row.
     var wifiServiceName: String?
 
-    var transportLabel: String { onUSB ? "USB" : "WiFi" }
+    // Which WiFi link the live connection landed on: the interface name
+    // ("awdl0") for Apple's peer-to-peer path, nil for a local network or a
+    // cable. Set by the sender the moment the connection is ready.
+    @Published var peerToPeerInterface: String?
+
+    /// "WiFi" on its own never said whether the two devices went through a
+    /// router or straight to each other \u2014 name the actual link instead.
+    var transportLabel: String {
+        if onUSB { return "USB" }
+        return peerToPeerInterface != nil ? "AWDL (direct)" : "WiFi (LAN)"
+    }
 
     init(id: String, target: ConnectionTarget, name: String, sender: MacSender) {
         self.id = id
@@ -363,6 +384,7 @@ final class SenderController: ObservableObject {
         guard !session.onUSB, let portNum = UInt16(port) else { return }
         Log.info("cable attached for \(session.id) — migrating to USB")
         session.onUSB = true
+        session.peerToPeerInterface = nil   // a cable is not a WiFi link
         session.usbUDID = device.udid
         // The match may have been by name only — pin the strong identity so
         // future matching (and the next launch) recognizes the pair.
@@ -380,6 +402,7 @@ final class SenderController: ObservableObject {
                   let result = wifiService(for: session) else { continue }
             Log.info("cable detached for \(session.id) — failing over to WiFi")
             session.onUSB = false
+            session.peerToPeerInterface = nil   // re-detected on the next WiFi dial
             session.wifiServiceName = serviceName(of: result)
             session.sender.switchTransport(to: .tcp(result.endpoint))
         }
@@ -526,6 +549,11 @@ final class SenderController: ObservableObject {
             session?.status = text
             Log.info("status[\(id)]: \(text)")
         }
+        sender.onPeerToPeer = { [weak session] interfaceName in
+            session?.peerToPeerInterface = interfaceName
+            let link = interfaceName ?? "local network or USB"
+            Log.info("link[\(id)]: \(link)")
+        }
         sender.onHello = { [weak self, weak session] info in
             guard let self, let session else { return }
             session.deviceID = info.id
@@ -624,10 +652,13 @@ final class SenderController: ObservableObject {
         let wifiTarget: ConnectionTarget?
 
         var transportLabel: String {
+            // No session exists yet, so the discovery path is the only hint:
+            // a service seen solely over awdl0 has no local network behind it.
+            let wifiLabel = (wifiTarget?.isPeerToPeerOnly ?? false) ? "AWDL" : "WiFi"
             switch (usbTarget != nil, wifiTarget != nil) {
-            case (true, true): return "USB · WiFi"
+            case (true, true): return "USB · \(wifiLabel)"
             case (true, false): return "USB"
-            case (false, true): return "WiFi"
+            case (false, true): return wifiLabel
             default: return ""
             }
         }

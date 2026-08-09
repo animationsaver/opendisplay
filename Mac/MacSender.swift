@@ -78,6 +78,15 @@ struct PhoneInfo: Decodable {
     var protocolVersion: Int { pv ?? WireProtocol.assumedWhenAbsent }
 }
 
+/// Apple's peer-to-peer WiFi link shows up as its own interface — `awdl0`, or
+/// `llw0` for the low-latency variant — while infrastructure WiFi is `en0`.
+/// Both report `NWInterface.InterfaceType.wifi`, so the interface name is the
+/// only thing that separates a direct link from one that goes via a router.
+func isPeerToPeerWiFiInterface(_ name: String) -> Bool {
+    let lowered = name.lowercased()
+    return lowered.hasPrefix("awdl") || lowered.hasPrefix("llw")
+}
+
 /// How the sender reaches the receiver. Reconnects re-dial from scratch, so
 /// a USB device that was replugged (new usbmuxd DeviceID) is found again.
 enum SenderTransport {
@@ -106,6 +115,10 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
     // Fired on every hello — carries the receiver's install id so the
     // controller can deduplicate USB/WiFi sessions to the same device.
     @MainActor var onHello: ((PhoneInfo) -> Void)?
+    // Fired once a connection is live, naming the peer-to-peer WiFi interface
+    // it landed on (`awdl0`), or nil when the link runs over a local network
+    // or USB. Lets the UI say which path is actually carrying the session.
+    @MainActor var onPeerToPeer: ((String?) -> Void)?
 
     private var stream: SCStream?
     private var encoder: VTCompressionSession?
@@ -742,7 +755,41 @@ final class MacSender: NSObject, SCStreamOutput, SCStreamDelegate {
         lastCursorSent = (-1, -1, false)
         lastReceived = Date()  // fresh grace period for the watchdog
         receiveControl(on: conn)
+        let peerToPeer = Self.peerToPeerInterface(of: conn)
+        Log.info(peerToPeer.map { "link: Apple peer-to-peer WiFi (\($0))" }
+            ?? "link: local network or USB")
+        Task { await self.reportLink(peerToPeer) }
         Task { await self.status("Connected to \(self.endpointName)") }
+    }
+
+    /// Which WiFi link a live connection actually landed on, or nil when it
+    /// is not a peer-to-peer one. Reported to the UI so "WiFi" alone can no
+    /// longer hide whether a router was involved.
+    private static func peerToPeerInterface(of conn: NWConnection) -> String? {
+        guard let path = conn.currentPath else { return nil }
+        // Strongest signal: a peer-to-peer socket talks to an IPv6
+        // link-local address scoped to the peer-to-peer interface.
+        if let remote = path.remoteEndpoint,
+           case .hostPort(let host, _) = remote,
+           case .ipv6(let address) = host,
+           let name = address.interface?.name,
+           isPeerToPeerWiFiInterface(name) {
+            return name
+        }
+        // Fallback: the path offers exactly one interface and it is the
+        // peer-to-peer one. Deliberately strict — `awdl0` is also listed
+        // alongside `en0` while the Mac sits on a network, and that case is
+        // infrastructure WiFi, not a direct link.
+        if path.availableInterfaces.count == 1,
+           let only = path.availableInterfaces.first,
+           isPeerToPeerWiFiInterface(only.name) {
+            return only.name
+        }
+        return nil
+    }
+
+    private func reportLink(_ interfaceName: String?) async {
+        await MainActor.run { onPeerToPeer?(interfaceName) }
     }
 
     private func connectTCP(_ endpoint: NWEndpoint) {

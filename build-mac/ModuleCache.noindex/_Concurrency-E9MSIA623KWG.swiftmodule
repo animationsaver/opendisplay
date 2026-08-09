@@ -1,0 +1,16 @@
+---
+path:            '/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx/prebuilt-modules/15.5/_Concurrency.swiftmodule/x86_64-apple-macos.swiftmodule'
+dependencies:
+  - mtime:           1785128530806979916
+    path:            '/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx/prebuilt-modules/15.5/_Concurrency.swiftmodule/x86_64-apple-macos.swiftmodule'
+    size:            527980
+  - mtime:           1785128530518817624
+    path:            'usr/lib/swift/Swift.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            1912950
+    sdk_relative:    true
+  - mtime:           1785128530531159124
+    path:            'usr/lib/swift/_Concurrency.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            230631
+    sdk_relative:    true
+version:         1
+...

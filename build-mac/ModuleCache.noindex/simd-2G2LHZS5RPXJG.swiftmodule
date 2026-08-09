@@ -1,0 +1,64 @@
+---
+path:            '/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx/prebuilt-modules/15.5/simd.swiftmodule/x86_64-apple-macos.swiftmodule'
+dependencies:
+  - mtime:           1785128530741044999
+    path:            '/Applications/Xcode_16.4.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/macosx/prebuilt-modules/15.5/simd.swiftmodule/x86_64-apple-macos.swiftmodule'
+    size:            957824
+  - mtime:           1785128530518817624
+    path:            'usr/lib/swift/Swift.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            1912950
+    sdk_relative:    true
+  - mtime:           1785128409820345874
+    path:            'usr/include/_time.apinotes'
+    size:            1132
+    sdk_relative:    true
+  - mtime:           1785128530458481291
+    path:            'usr/lib/swift/_errno.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            3890
+    sdk_relative:    true
+  - mtime:           1785128530469500499
+    path:            'usr/lib/swift/_time.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            1065
+    sdk_relative:    true
+  - mtime:           1785128530452726916
+    path:            'usr/lib/swift/_signal.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            1101
+    sdk_relative:    true
+  - mtime:           1785128530519097833
+    path:            'usr/lib/swift/sys_time.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            1102
+    sdk_relative:    true
+  - mtime:           1785128530521518416
+    path:            'usr/lib/swift/_stdio.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            1513
+    sdk_relative:    true
+  - mtime:           1785128530475998749
+    path:            'usr/lib/swift/unistd.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            853
+    sdk_relative:    true
+  - mtime:           1785128530490994916
+    path:            'usr/lib/swift/_math.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            22628
+    sdk_relative:    true
+  - mtime:           1785128530525929416
+    path:            'usr/lib/swift/_Builtin_float.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            5775
+    sdk_relative:    true
+  - mtime:           1785128530434296374
+    path:            'usr/lib/swift/Darwin.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            18255
+    sdk_relative:    true
+  - mtime:           1785128530531159124
+    path:            'usr/lib/swift/_Concurrency.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            230631
+    sdk_relative:    true
+  - mtime:           1785128530518883749
+    path:            'usr/lib/swift/_StringProcessing.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            22908
+    sdk_relative:    true
+  - mtime:           1785128530529579624
+    path:            'usr/lib/swift/simd.swiftmodule/x86_64-apple-macos.swiftinterface'
+    size:            218759
+    sdk_relative:    true
+version:         1
+...

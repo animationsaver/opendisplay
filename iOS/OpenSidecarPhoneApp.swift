@@ -316,12 +316,14 @@ struct PerfOverlay: View {
             // Metrics wrap onto extra rows when the width doesn't fit —
             // portrait iPhone is ~390pt, far less than one full row.
             FlowLayout(hSpacing: 14, vSpacing: 8) {
-                // Transport badge — the question "is this cable or WiFi?"
+                // Transport badge — the question "is this the cable, the
+                // local network, or a direct link with no network at all?"
                 Text(stats.transport)
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(stats.transport == "USB" ? Color.green.opacity(0.35)
+                                : stats.transport == "AWDL" ? Color.purple.opacity(0.45)
                                 : stats.transport == "WiFi" ? Color.blue.opacity(0.4)
                                 : Color.gray.opacity(0.3),
                                 in: Capsule())

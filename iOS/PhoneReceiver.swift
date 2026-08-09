@@ -30,7 +30,7 @@ struct PerfStats: Equatable {
     var encodeP50 = 0.0          // Mac-side capture→socket (encode + queue)
     var rttMs = 0.0              // control-channel round trip
     var e2eSamples: [Double] = []  // last ~120 per-frame e2e latencies, ms
-    var transport = "—"          // USB (loopback via usbmux) or WiFi
+    var transport = "—"          // USB (usbmux loopback), WiFi (LAN) or AWDL
     var macDrops = 0             // enc + net drops (legacy total)
     var macEncDrops = 0          // Mac skipped capture: encoder busy
     var macNetDrops = 0          // Mac skipped capture: TCP queue full
@@ -405,6 +405,8 @@ final class PhoneReceiver: ObservableObject {
             // usbmux-forwarded (cable) connections arrive from loopback;
             // anything else came over the network.
             let peer = String(describing: conn.endpoint)
+            // Provisional: "WiFi" here only means "not the cable". Whether it
+            // is a router or a direct link is settled once the path exists.
             self.transport = (peer.hasPrefix("127.0.0.1") || peer.hasPrefix("::1")
                               || peer.hasPrefix("localhost")) ? "USB" : "WiFi"
             // Replace any existing connection and reset decoder state.
@@ -415,6 +417,19 @@ final class PhoneReceiver: ObservableObject {
                 switch state {
                 case .ready:
                     self?.lastDataReceived = Date()
+                    // USB was settled at accept time from the loopback
+                    // address. Separating a direct AWDL link from
+                    // infrastructure WiFi needs the connection's path, which
+                    // does not exist until it is ready.
+                    if let self, self.transport != "USB" {
+                        if let link = conn.peerToPeerWiFiInterfaceName {
+                            self.transport = "AWDL"
+                            Log.info("link: Apple peer-to-peer WiFi (\(link))")
+                        } else {
+                            self.transport = "WiFi"
+                            Log.info("link: local network")
+                        }
+                    }
                     self?.setConnected(true)
                     self?.sendHello(on: conn)
                 case .failed, .cancelled:
@@ -1035,5 +1050,42 @@ final class PhoneReceiver: ObservableObject {
                 UserDefaults.standard.set(true, forKey: "hasConnectedBefore")
             }
         }
+    }
+}
+
+/// Apple's peer-to-peer WiFi link shows up as its own interface — `awdl0`, or
+/// `llw0` for the low-latency variant — while infrastructure WiFi is `en0`.
+/// Both report `NWInterface.InterfaceType.wifi`, so the interface name is the
+/// only thing that separates a direct link from one that goes via a router.
+func isPeerToPeerWiFiInterface(_ name: String) -> Bool {
+    let lowered = name.lowercased()
+    return lowered.hasPrefix("awdl") || lowered.hasPrefix("llw")
+}
+
+extension NWConnection {
+    /// The peer-to-peer WiFi interface this connection landed on, or nil when
+    /// it runs over a local network or the USB loopback. Only meaningful once
+    /// the connection is ready — before that there is no path to inspect.
+    var peerToPeerWiFiInterfaceName: String? {
+        guard let path = currentPath else { return nil }
+        // Strongest signal: a peer-to-peer socket talks to an IPv6 link-local
+        // address scoped to the peer-to-peer interface.
+        if let remote = path.remoteEndpoint,
+           case .hostPort(let host, _) = remote,
+           case .ipv6(let address) = host,
+           let name = address.interface?.name,
+           isPeerToPeerWiFiInterface(name) {
+            return name
+        }
+        // Fallback: the path offers exactly one interface and it is the
+        // peer-to-peer one. Deliberately strict — `awdl0` is also listed
+        // alongside `en0` while the device sits on a network, and that case is
+        // infrastructure WiFi, not a direct link.
+        if path.availableInterfaces.count == 1,
+           let only = path.availableInterfaces.first,
+           isPeerToPeerWiFiInterface(only.name) {
+            return only.name
+        }
+        return nil
     }
 }
