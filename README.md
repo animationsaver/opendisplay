@@ -11,7 +11,7 @@ alternative to Apple Sidecar, Duet Display, and Luna Display: true extended
 display (not just mirroring), Retina-sharp, over USB or WiFi, with touch and
 scroll input.
 
-[Website](https://peetzweg.github.io/opendisplay/) · [Quick start](#quick-start) · [How it works](#how-it-works) · [FAQ](#faq) · [Contributing](#contributing)
+[Website](https://peetzweg.github.io/opendisplay/) · [Quick start](#quick-start-from-source) · [How it works](#how-it-works) · [No local network](#connecting-without-a-local-network) · [FAQ](#faq) · [Contributing](#contributing)
 
 <br />
 
@@ -22,6 +22,21 @@ scroll input.
 </div>
 
 ---
+
+## About this fork
+
+This is a fork of [peetzweg/opendisplay](https://github.com/peetzweg/opendisplay)
+that makes OpenDisplay connect **without a local network**.
+
+Upstream, wireless mode needs both devices on the same WiFi network — a router,
+a hotspot, or some other access point in between. This fork removes that
+requirement: the Mac and the iOS device link **directly to each other over
+Apple's peer-to-peer WiFi (AWDL)**, the same radio link AirDrop and AirPlay use.
+No router, no access point, no shared network, no internet.
+
+See [Connecting without a local network](#connecting-without-a-local-network)
+for how it works and what it needs. Everything else — USB mode, touch input,
+HiDPI, multi-device — behaves exactly as upstream.
 
 ## Why OpenDisplay exists
 
@@ -48,8 +63,11 @@ pipeline, USB transport, input injection) are already working.
   cable via macOS's built-in `usbmuxd`; plug in and go, no network, no
   WiFi jitter, no helper tools.
 - 📶 **WiFi with zero config** — the iPhone advertises itself via Bonjour;
-  pick it from a dropdown on the Mac. Apple peer-to-peer WiFi also works when
-  no router or access point is available.
+  pick it from a dropdown on the Mac.
+- 🛜 **Works with no local network at all** — when there is no router or
+  access point, the Mac and the device link up directly over Apple's
+  peer-to-peer WiFi (AWDL). Nothing to configure: same app, same dropdown.
+  See [Connecting without a local network](#connecting-without-a-local-network).
 - 🔍 **Retina / HiDPI** — the virtual display matches the device panel
   pixel-for-pixel (@2x), so text is sharp.
 - 👆 **Touch input built in** — your iPhone becomes a touchscreen for macOS:
@@ -83,6 +101,12 @@ screen — Duet, Luna, OBS, and Zoom trigger it too. Apple Sidecar doesn't,
 only because it's implemented inside the OS rather than on public capture
 APIs. It cannot (and shouldn't) be hidden by an app; it's how macOS tells
 you a capture is running.
+
+**Do I need a WiFi network or router?** No. With no router, hotspot or access
+point around, the Mac and the device connect directly over Apple peer-to-peer
+WiFi (AWDL). WiFi has to be switched **on** on both devices, but neither has to
+be joined to a network and no internet is involved. See
+[Connecting without a local network](#connecting-without-a-local-network).
 
 **The Mac app doesn't show my iPhone in the Connection menu (WiFi).**
 Both sides need **Local Network** permission, and both fail *silently*
@@ -176,6 +200,87 @@ exactly half that in points (@2x HiDPI) and streams the pixels back.
 BetterDisplay and DeskPad) — which is precisely why this project can't ship
 on the App Store and lives on GitHub instead.
 
+## Connecting without a local network
+
+OpenDisplay does not need a router, an access point, a hotspot or an internet
+connection. If there is no network to join, the Mac and the iOS device build
+their own direct WiFi link using **Apple peer-to-peer WiFi (AWDL)** — the same
+mechanism behind AirDrop and AirPlay.
+
+There is no separate mode or switch. Open the iOS app, pick the device from the
+Connection menu on the Mac, and the system takes the best available path: the
+LAN when one exists, a direct peer-to-peer link when one doesn't.
+
+### What makes it work
+
+Peer-to-peer has to be requested on **every leg** of the connection, and the
+Bonjour service endpoint has to survive all the way down to the socket:
+
+| Leg | Where | What it does |
+|---|---|---|
+| iOS listener | `iOS/PhoneReceiver.swift` | `params.includePeerToPeer = true`, so the `_opensidecar._tcp` service is advertised over AWDL and not only on the LAN |
+| Mac browser | `Mac/OpenSidecarMacApp.swift` | `params.includePeerToPeer = true`, so `NWBrowser` sees peers that have no IP address on any shared subnet |
+| Mac connection | `Mac/MacSender.swift` | `params.includePeerToPeer = true`, and it dials `NWConnection(to: result.endpoint)` — the **Bonjour service endpoint itself** |
+
+That last row is the one that is easy to get wrong. Resolving a discovered
+service down to an IP address and dialing the IP throws the peer-to-peer path
+away, because that address only exists on infrastructure WiFi — the connection
+then either fails or quietly falls back to the LAN. Handing the `.service`
+endpoint straight to `NWConnection` is what lets Network.framework choose AWDL
+when that is the only way to reach the peer.
+
+### Requirements and limits
+
+- **WiFi must be switched on** on both devices — but neither has to be joined to
+  a network. AWDL rides on the WiFi radio, so turning WiFi off disables it.
+- **Local Network permission is still required**, even with no router. The
+  permission gates Bonjour discovery itself, not the network you are on, and
+  both sides fail silently without it.
+- **Keep Bluetooth on.** macOS and iOS use it to bootstrap AWDL discovery.
+- **Keep the devices close.** AWDL is a short-range direct link; throughput and
+  latency degrade with distance and obstacles much faster than on a good LAN.
+- **Bandwidth is shared with normal WiFi.** There is one radio, and AWDL
+  time-slices with any infrastructure network the device is also using. Expect
+  less throughput than a cable — USB remains the lowest-latency option.
+
+### Multiple devices at the same time
+
+Connecting an iPhone and an iPad simultaneously works over peer-to-peer WiFi
+too. The Mac keeps one independent session per device, each with its own
+virtual display, capture stream, encoder and socket, so every device becomes
+its own separate extended display rather than another view of the same one.
+
+Two things are worth knowing:
+
+- Give the devices **distinct names**. A WiFi session is keyed by the Bonjour
+  service name, which defaults to the device name, so two devices sharing a
+  name will collide. The iOS app has a device-name setting if you need it.
+- Two live streams **share one radio**. If the picture gets choppy with both
+  connected, lower the quality setting, or put one device on USB and leave the
+  other on peer-to-peer WiFi — transports are per-session and can be mixed.
+
+### Reliability fix: listener restart loop
+
+Enabling peer-to-peer WiFi exposed a launch-time race in the iOS receiver that
+left the app stuck on `Listener failed — restarting...` so it never became
+discoverable at all.
+
+`start()` queued the listener bind, and the scene becoming active immediately
+queued `ensureListening()` behind it. The listener had not reached `.ready`
+yet, so it was judged unhealthy and restarted — and the restart cancelled and
+rebound the same fixed port within the same turn. `NWListener.cancel()` does
+not release the socket synchronously, so the rebind hit
+`POSIX error 48: Address already in use`, which scheduled another restart, for
+ever. `includePeerToPeer` did not cause this; bringing up AWDL delays `.ready`
+just enough to widen the race window, which is why it surfaced only on wireless
+peer-to-peer launches.
+
+The receiver now tracks whether a bind is already in flight, ignores redundant
+`ensureListening()` calls while one is, invalidates superseded restarts with a
+generation counter, and backs off exponentially (0.5s to 8s) instead of
+hammering the port. `allowLocalEndpointReuse` is deliberately not relied on:
+testing confirmed it is a no-op for this case (OpenRadar FB8658821).
+
 ## Install
 
 You need **two apps**: a Mac app (captures and sends) and an iOS app
@@ -184,10 +289,21 @@ You need **two apps**: a Mac app (captures and sends) and an iOS app
 ### Prebuilt downloads (Mac)
 
 Grab `OpenDisplay.dmg` from the
-[latest release](https://github.com/peetzweg/opendisplay/releases/latest).
+[latest upstream release](https://github.com/peetzweg/opendisplay/releases/latest).
 The app is signed with a Developer ID certificate and notarized by Apple, so it
 opens with a plain double-click on macOS 14+ — no Gatekeeper warning. Open the
-`.dmg` and drag the app to Applications.
+`.dmg` and drag the app to Applications. Upstream builds do **not** include the
+peer-to-peer WiFi support described above.
+
+**Builds of this fork** are published on
+[this fork's releases page](https://github.com/animationsaver/opendisplay/releases/latest).
+They are built from source on a clean machine and are **ad-hoc signed, not
+notarized**, so Gatekeeper blocks the first launch: right-click the app and
+choose **Open**, or clear the quarantine flag with
+`xattr -dr com.apple.quarantine /Applications/OpenDisplay.app`.
+The iOS build ships as an **unsigned `.ipa`**, so you have to re-sign it
+yourself (Xcode, or a tool such as Sideloadly) before it will install.
+Every asset is listed with its SHA-256 checksum in `SHA256SUMS.txt`.
 
 ### iPhone app
 
@@ -243,10 +359,16 @@ under Membership, or just pick your team in Xcode's Signing pane.)
 ### Run (WiFi)
 
 Open the iPhone app, then pick **"iPhone (WiFi)"** from the Connection menu
-in the Mac app. Discovery is automatic via Bonjour. When both devices are on
-the same LAN OpenDisplay uses it; without an access point, Network.framework
-can establish an Apple peer-to-peer WiFi link instead. Keep WiFi enabled on
-both devices. USB has lower latency; WiFi has no cable.
+in the Mac app. Discovery is automatic via Bonjour.
+
+You do **not** need a shared network. When both devices are on the same LAN
+OpenDisplay uses it; when there is no router or access point at all,
+Network.framework establishes a direct Apple peer-to-peer WiFi (AWDL) link
+instead — same app, same menu, nothing to configure. Keep WiFi switched on
+(though not necessarily joined to anything) on both devices, and see
+[Connecting without a local network](#connecting-without-a-local-network).
+
+USB still has the lowest latency; WiFi has no cable.
 
 ### Permissions checklist
 
@@ -266,6 +388,10 @@ All live under **Privacy & Security** in System Settings (Mac) / Settings
 (iPhone). The Local Network ones are only needed for WiFi mode — USB works
 without them. If the prompt never appeared, toggle the entry manually or
 force-quit and reopen the app.
+
+> **Local Network permission is required for peer-to-peer WiFi too.** It gates
+> Bonjour discovery itself, so it applies even when there is no router and no
+> network to join. Both sides fail silently without it.
 
 ## Roadmap
 
@@ -296,6 +422,8 @@ Tracked as [roadmap issues](https://github.com/peetzweg/opendisplay/issues?q=is%
 - [#15](https://github.com/peetzweg/opendisplay/issues/15) Additional client platforms
 
 Done: prebuilt releases, built-in USB connectivity (no helper tools), WiFi via Bonjour, portrait mode, touch + two-finger scroll, performance overlay, iPad support, multiple devices at once ([#8](https://github.com/peetzweg/opendisplay/issues/8) — every connected device becomes its own extended display).
+
+Added by this fork: **Apple peer-to-peer WiFi (AWDL)**, so no router, access point or shared network is needed — see [Connecting without a local network](#connecting-without-a-local-network).
 
 ## Auto-update (macOS app)
 
